@@ -603,24 +603,31 @@ function keyCtx(){const none={act:null,sel:[]};if(!(S.role==="C1"||S.role==="C2"
   if(!d||d.phase==="act"){const u=units[Math.min(S.curRow,units.length-1)];return{act:d?.items[u.key]?.act||null,sel:[]};}
   const u=units[Math.min(S.curUnit,units.length-1)];const it=d.items[u.key]||{};return{act:it.act||null,sel:it.ius||[]};}
 const GUIDE=`<div class="guide">
-<p class="glead">Split each response into <b>clause-level units</b>: one subject with one verb (the subject can be implied). This matches how the story itself is divided, so most recall units line up with one idea unit in the key.</p>
+<p class="glead">Split each response into <b>clause-level units</b>: one subject with one verb (the subject can be left out, as in "and went home"). This matches how the story itself is divided, so most recall units line up with one idea unit in the key.</p>
+<h3>Where the split goes</h3>
+<ul>
+<li><b>After every period.</b> Every sentence end gets a split, so click the last word of each sentence.</li>
+<li><b>Before the joining word.</b> "and", "or", "because" and the like start the new unit. Click the word just before the joining word.<div class="gex">she realized it was a copy of the test <span class="gcut">‖</span> and thought about taking it</div></li>
+</ul>
 <h3>Split</h3>
 <ul>
-<li><b>Between clauses.</b> Split before joining words like <i>and, but, so, because, then, after, when, while, where, who, which</i> when a new verb follows.<div class="gex">She had forgotten her work in her locker <span class="gcut">‖</span> causing her to go back into the school <span class="gcut">‖</span> where she sees a custodian <span class="gcut">‖</span> who has headphones on</div></li>
-<li><b>Time and place phrases get their own unit.</b> The story key separates these (for example #1 “It's late August”, #2 “in Silver City, New Mexico”, #85 “It was early March”).<div class="gex">Months later <span class="gcut">‖</span> she got a letter from NMSU</div></li>
-<li><b>Comments that aren't story content</b> (“I think”, “I don't remember the rest”) get their own unit so coders can mark them <i>Not in story</i>.</li>
+<li><b>At every joining word that starts a separate unit.</b> Mark every <i>and, or, because</i> (also <i>but, so, when, while, then, who, which</i>) when what follows has its own verb. That includes a run of actions.<div class="gex">she grabbed the test <span class="gcut">‖</span> and ran out <span class="gcut">‖</span> when she heard someone coming</div></li>
+<li><b>The "in order to" test.</b> If you can replace "to" with "in order to", the purpose gets its own unit. If "to" is just a preposition, as in "went back to school", it stays.<div class="gex">amelia went back to school <span class="gcut">‖</span> to get her programming notebook</div></li>
+<li><b>Scene-setting time and place phrases</b> at the front of a sentence get their own unit. The same phrase at the end of a clause stays.<div class="gex">One Friday night, <span class="gcut">‖</span> Amelia went back to school</div></li>
+<li><b>Comments that aren't story content</b> ("I think", "I don't remember the rest") get their own unit so coders can mark them <i>Not in story</i>.</li>
 </ul>
 <h3>Don't split</h3>
 <ul>
-<li><b>Dialogue.</b> Keep one quoted or paraphrased line of speech together, even if it has several clauses. The key keeps dialogue lines whole (#35, #37).<div class="gex">Chrissy said she never does well in her classes</div></li>
-<li><b>A verb from what completes it.</b> <i>decided to pick up the test</i>, <i>wanted to get into NMSU</i> and <i>wondered whether to take it</i> are one unit each.</li>
-<li><b>A run of actions in one moment by the same person.</b> The key keeps these together (#60 walked to her locker, put in her combination, and grabbed her notebook; #79 left the test and ran out the backdoor).</li>
-<li><b>Names.</b> Leave a character's name inside its clause.</li>
+<li><b>Names stay with their verb.</b> <i>amelia went back to school</i> is one unit, never <i>amelia ‖ went back to school</i>. Coders can still tick #3 for the name.</li>
+<li><b>Descriptions with names are the same unit.</b> <i>she talked to chrissy, her friend</i> and <i>a girl named Amelia</i> stay together.</li>
+<li><b>"And" with no new verb.</b> <i>she knew it would be cheating and unfair to other students</i> is one unit.</li>
+<li><b>Speech and letters.</b> Keep one line of speech, quoted or paraphrased, together, and keep a letter's words with it.<div class="gex">she got a letter from NMSU saying she was accepted</div></li>
+<li><b>A verb and what completes it.</b> <i>decided to leave it</i>, <i>wanted to study computer science</i> and <i>knew that it was wrong</i> are one unit each ("in order to" doesn't fit).</li>
 </ul>
 <h3>Also</h3>
 <ul>
 <li>Don't fix spelling or grammar. Unitize what the participant wrote.</li>
-<li>A cut-off ending (“got a letter back in mar”) is its own unit.</li>
+<li>A cut-off ending ("got a letter back in mar") is its own unit.</li>
 <li><b>When unsure, split.</b> Coders can match one unit to two story units, but they can't divide a unit that's too big.</li>
 </ul></div>`;
 function renderSideKey(){const sk=$("#sidekey"),shell=$("#shell");
