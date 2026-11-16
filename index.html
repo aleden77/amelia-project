@@ -191,6 +191,10 @@ h3{font-size:13px;margin:0 0 8px;font-weight:600}
 .stat .v{font-family:var(--f-mono);font-size:22px;font-variant-numeric:tabular-nums}
 .stat .s{font-size:12px;color:var(--muted)}
 .dis{background:var(--bad-soft)}
+.dg{font-family:var(--f-mono);font-size:10px;font-weight:600;vertical-align:super;padding:0 1px}
+.dg1{color:var(--a1)}.dg2{color:var(--a3)}
+.rz{cursor:pointer;border-radius:3px}.rz:hover{background:var(--accent-soft)}
+.rz.end::after{content:"‖";color:var(--accent);font-family:var(--f-body);font-weight:600;margin:0 4px 0 3px}
 details{border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px}
 summary{padding:8px 12px;cursor:pointer;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 details .tw{border:0;border-top:1px solid var(--line);border-radius:0}
@@ -224,7 +228,7 @@ details .tw{border:0;border-top:1px solid var(--line);border-radius:0}
    SETUP: paste your Google Apps Script web app URL between the quotes.
    (Leave it empty and the page will ask for the URL instead.)
    ========================================================== */
-const API_URL = "https://script.google.com/macros/s/AKfycbwrA4MPpTXU30RoaDfB_khWSN2tN5Y3t7eW-A0IPz6ybobsMOUH-DmUlTSZzCjlIpk/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxRzHIq-PXxZlKhDGV_Xw-Us0FfuEbNe8w26SRuEiE75yT1CQeuNCgNlJh6JOBHsiWPBg/exec";
 
 /* ---------- Master idea-unit list (Appendix A) ---------- */
 const K=[
@@ -329,7 +333,8 @@ const KEY={}; K.forEach(r=>KEY[r[0]]={n:r[0],act:r[1],label:r[2],text:r[3],alt:r
 const ACTS={1:"Setup: Amelia, her CS goal, the NMSU test",2:"Cafeteria scene with Chrissy",3:"Back to school at night; finds the envelope",4:"Realizes it's the test; weighs cheating",5:"The decision; leaving the school",6:"March: the NMSU letter and her reaction"};
 const ACT_VALS=["1","2","3","4","5","6","N","U"];
 const ACT_NAME=v=>v==="N"?"Not in story":v==="U"?"Unclear":"Act "+v;
-const ROLES={U:"Unitizer",C1:"Coder 1",C2:"Coder 2",L:"Lead"};
+const ROLES={U1:"Unitizer 1",U2:"Unitizer 2",C1:"Coder 1",C2:"Coder 2",L:"Lead"};
+const isUnit=r=>r==="U1"||r==="U2";
 const isAct=v=>/^[1-6]$/.test(v||"");
 
 /* ---------- small helpers ---------- */
@@ -345,7 +350,8 @@ const k2=x=>x==null?"—":x.toFixed(2);
 /* ---------- state ---------- */
 const S={mode:"loading",uid:null,canLead:false,role:ls("role")||"U",initials:ls("ini")||"",view:"work",leadTab:"responses",sel:null,
   responses:{},units:{},coders:{},myCodes:{},allCodes:{},curRow:0,curUnit:0,confirmDel:null,exportCsv:null,bulkMsg:""};
-if(!ROLES[S.role])S.role="U";
+if(S.role==="U")S.role="U1";if(!ROLES[S.role])S.role="U1";
+S.resolve={};S.openU=new Set();
 S.keyOpen=ls("keyOpen")!=="0";S.skTab=ls("skTab")==="key"?"key":"guide";S.keyAct="all";S.keyQ="";S.popout=location.hash==="#key";
 let DB=null; const leadSubs={}; let mySub=null;
 
@@ -363,7 +369,10 @@ function makeStore(){const store=new Map(),subs=[];const par=p=>p.split("/").sli
   const collection=cp=>({onSnapshot(next){const s={fire:()=>{const docs=[...store.keys()].filter(k=>par(k)===cp).sort().map(snap);next({docs,size:docs.length,empty:!docs.length});}};subs.push(s);setTimeout(s.fire,0);return()=>{const i=subs.indexOf(s);if(i>=0)subs.splice(i,1);};}});
   return{store,notify,collection};}
 /* demo: in memory, nothing saved */
-function memDB(){const c=makeStore();const apply=ops=>{ops.forEach(o=>o.op==="delete"?c.store.delete(o.path):c.store.set(o.path,clone(o.data)));setTimeout(c.notify,0);};
+function autoSendDemo(store,ops){ops.forEach(o=>{const m=/^(codes\/[^\/]+\/resp\/)(U1|U2)__(.+)$/.exec(o.path);if(!m||o.op==="delete"||!o.data||o.data.status!=="final")return;
+  const u1=store.get(m[1]+"U1__"+m[3]),u2=store.get(m[1]+"U2__"+m[3]);if(!u1||!u2||u1.status!=="final"||u2.status!=="final")return;
+  const cur=store.get("units/"+m[3]);if(cur&&cur.status==="final")return;store.set("units/"+m[3],{bounds:u1.bounds||[],status:"final",by:"auto",initials:u1.initials||"",autoFrom:"U1",updatedAt:Date.now()});});}
+function memDB(){const c=makeStore();const apply=ops=>{ops.forEach(o=>o.op==="delete"?c.store.delete(o.path):c.store.set(o.path,clone(o.data)));autoSendDemo(c.store,ops);setTimeout(c.notify,0);};
   return{store:c.store,collection:c.collection,doc:p=>({set:async d=>apply([{op:"set",path:p,data:d}]),delete:async()=>apply([{op:"delete",path:p}])}),batch:async ops=>apply(ops),setRole:async()=>{},start(){}};}
 /* live: Google Sheet via Apps Script web app, polled every 15 s */
 function remoteDB(api,key){const c=makeStore();let since=0,role=S.role,timer=null,chain=Promise.resolve();
@@ -406,7 +415,7 @@ async function connect(api,key){
   subscribe();DB.start();render();
 }
 function startDemo(){DB=memDB();S.mode="demo";S.uid="team";S.canLead=true;
-  DEMO.forEach((d,i)=>DB.store.set("responses/"+d.id,{...d,assign:"both",createdAt:Date.now()+i}));subscribe();render();}
+  DEMO.forEach((d,i)=>DB.store.set("responses/"+d.id,{...d,assign:"both",uassign:i===0?"both":"U1",createdAt:Date.now()+i}));subscribe();render();}
 function subscribe(){
   DB.collection("responses").onSnapshot(s=>{S.responses=Object.fromEntries(s.docs.map(d=>[d.id,d.data()]));render();});
   DB.collection("units").onSnapshot(s=>{const m={};s.docs.forEach(d=>{const p="units/"+d.id;m[d.id]=PW.has(p)&&S.units[d.id]?S.units[d.id]:clone(d.data());});S.units=m;render();});
@@ -418,7 +427,7 @@ function registerCoder(){}
 
 /* ---------- data helpers ---------- */
 const words=t=>(t||"").trim().split(/\s+/).filter(Boolean);
-function unitsOf(id){const r=S.responses[id];const w=words(r?.text);if(!w.length)return[];const b=[...new Set((S.units[id]?.bounds||[]).filter(i=>i>=0&&i<w.length-1))].sort((a,b)=>a-b);
+function unitsOf(id,bnd){const r=S.responses[id];const w=words(r?.text);if(!w.length)return[];const b=[...new Set(((bnd!==undefined?bnd:S.units[id]?.bounds)||[]).filter(i=>i>=0&&i<w.length-1))].sort((a,b)=>a-b);
   const out=[];let s=0;for(const e of[...b,w.length-1]){if(e<s)continue;out.push({s,e,key:s+"-"+e,text:w.slice(s,e+1).join(" ")});s=e+1;}return out;}
 const sigOf=id=>unitsOf(id).map(u=>u.key).join(",");
 const respList=()=>Object.entries(S.responses).map(([id,r])=>({id,...r})).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)||a.id.localeCompare(b.id));
@@ -430,18 +439,27 @@ function item(d,key){if(!d.items[key])d.items[key]={act:null,act1:null,ius:[],no
 function unitDone(it){return it&&it.act&&(!isAct(it.act)||it.none||(it.ius&&it.ius.length));}
 function coderStatus(id,doc){if(!doc)return["Not started",""];if(doc.phase==="done")return["Submitted","ok"];if(doc.phase==="unit")return["Idea-unit pass","mid"];return["Act pass","mid"];}
 const assigned=r=>!r.assign||r.assign==="both"||r.assign===S.role;
+/* unitizing assignment: "U1", "U2" or "both" (double-unitized) */
+const uAssign=r=>(r&&r.uassign)||"U1";
+const uAssigned=r=>uAssign(r)==="both"||uAssign(r)===S.role;
+const isDouble=id=>uAssign(S.responses[id])==="both";
+/* a unitizer's working copy: a private draft for double-unitized responses, otherwise the shared units */
+function uWork(id){if(isDouble(id)){const d=S.myCodes[S.role+"__"+id];return d?{bounds:d.bounds||[],status:d.status||"draft",initials:d.initials}:null;}return S.units[id]||null;}
+function setMyUnits(id,bounds,status){if(!isDouble(id))return setUnits(id,bounds,status);if(!S.uid){toast("Sign in to save.");return;}
+  const k=S.role+"__"+id;const d={respId:id,role:S.role,kind:"units",bounds:[...new Set(bounds)].sort((a,b)=>a-b),status,initials:S.initials,updatedAt:Date.now()};
+  S.myCodes[k]=d;queueWrite("codes/"+S.uid+"/resp/"+k,clone(d),250);render();}
 
 /* ---------- render ---------- */
 function renderMain(){
   const ae=document.activeElement,aid=ae&&ae.id,ss=ae&&ae.selectionStart,se=ae&&ae.selectionEnd;
   $("#roles").innerHTML=Object.entries(ROLES).map(([k,v])=>`<button data-role="${k}" aria-pressed="${S.role===k}">${v}</button>`).join("");
   const ini=$("#initials");if(document.activeElement!==ini)ini.value=S.initials;
-  $("#keyBtn").setAttribute("aria-pressed",sideKeyRole()?S.keyOpen:S.view==="key");$("#keyBtn").textContent=sideKeyRole()&&S.role==="U"?"Guide & key":"Story key";
+  $("#keyBtn").setAttribute("aria-pressed",sideKeyRole()?S.keyOpen:S.view==="key");$("#keyBtn").textContent=sideKeyRole()&&isUnit(S.role)?"Guide & key":"Story key";
   let b="";
   $("#lockBtn").hidden=S.mode!=="live";
   if(S.mode==="demo")b="Demo mode: nothing you do here is saved. Two sample responses are loaded so you can try each role. Reload the page to leave the demo.";
   else if(S.netErr)b="Can't reach the coding sheet right now. Keep working; your changes are sent automatically when the connection is back.";
-  else if(S.mode==="live"&&(S.role==="U"||S.role==="C1"||S.role==="C2")&&!S.initials)b="Enter your initials at the top so your work is attributed in the export.";
+  else if(S.mode==="live"&&(isUnit(S.role)||S.role==="C1"||S.role==="C2")&&!S.initials)b="Enter your initials at the top so your work is attributed in the export.";
   $("#banner").innerHTML=b?`<div class="banner">${h(b)}</div>`:"";
   const app=$("#app");
   if(S.mode==="loading")return;
@@ -453,15 +471,15 @@ function renderMain(){
 }
 
 function renderWorkbench(){
-  const list=respList();const U=S.role==="U";
-  const items=list.filter(r=>U||assigned(r));
-  if(!items.length)return`<div class="panel empty"><strong>No responses yet</strong>${S.canLead?"Switch to Lead and add participants' recall responses to start.":"The study lead hasn't added responses yet."}</div>`;
-  if(!S.sel||!S.responses[S.sel]||!items.find(r=>r.id===S.sel)){const first=items.find(r=>U?S.units[r.id]?.status!=="final":(S.units[r.id]?.status==="final"&&myDoc(r.id)?.phase!=="done"))||items[0];S.sel=first.id;}
+  const list=respList();const U=isUnit(S.role);
+  const items=list.filter(r=>U?uAssigned(r):assigned(r));
+  if(!items.length)return list.length?`<div class="panel empty"><strong>Nothing assigned to you yet</strong>The study lead assigns responses under Lead, then Responses.</div>`:`<div class="panel empty"><strong>No responses yet</strong>${S.canLead?"Switch to Lead and add participants' recall responses to start.":"The study lead hasn't added responses yet."}</div>`;
+  if(!S.sel||!S.responses[S.sel]||!items.find(r=>r.id===S.sel)){const first=items.find(r=>U?uWork(r.id)?.status!=="final":(S.units[r.id]?.status==="final"&&myDoc(r.id)?.phase!=="done"))||items[0];S.sel=first.id;}
   const q=items.map(r=>{let chip;const u=S.units[r.id];
-    if(U){chip=u?.status==="final"?`<span class="chip ok">Complete</span>`:u?`<span class="chip mid">Draft</span>`:`<span class="chip">Not started</span>`;}
+    if(U){const uw=uWork(r.id);chip=uw?.status==="final"?`<span class="chip ok">Complete</span>`:uw?`<span class="chip mid">Draft</span>`:`<span class="chip">Not started</span>`;if(isDouble(r.id))chip=`<span class="chip on">Double</span> `+chip;}
     else{if(u?.status!=="final")chip=`<span class="chip">Awaiting units</span>`;else{const[t,c]=coderStatus(r.id,myDoc(r.id));chip=`<span class="chip ${c}">${t}</span>`;}}
     return`<button class="qi" data-a="sel" data-id="${h(r.id)}" aria-current="${S.sel===r.id}"><span class="pid">${h(r.pid)} <span class="meta">S${h(r.session||"?")}</span></span>${chip}</button>`;}).join("");
-  const done=U?items.filter(r=>S.units[r.id]?.status==="final").length:items.filter(r=>myDoc(r.id)?.phase==="done").length;
+  const done=U?items.filter(r=>uWork(r.id)?.status==="final").length:items.filter(r=>myDoc(r.id)?.phase==="done").length;
   return`<div class="wb"><nav class="rail" aria-label="Response queue"><h2>${ROLES[S.role]} queue · ${done}/${items.length} done</h2>${q}</nav>
   <section class="panel">${U?renderUnitizer(S.sel):renderCoder(S.sel)}</section></div>`;
 }
@@ -469,20 +487,20 @@ function renderWorkbench(){
 function head(r,steps){return`<div class="ph"><h2>${h(r.pid)}</h2><span class="meta">Session ${h(r.session||"?")}${r.condition?" · "+h(r.condition):""} · ${words(r.text).length} words</span>${steps||""}</div>`;}
 
 function renderUnitizer(id){
-  const r=S.responses[id];const u=S.units[id];const fin=u?.status==="final";const w=words(r.text);const units=unitsOf(id);
+  const r=S.responses[id];const dbl=isDouble(id);const u=uWork(id);const resolved=dbl&&S.units[id]?.status==="final";const fin=u?.status==="final"||resolved;const w=words(r.text);const units=unitsOf(id,u?u.bounds:[]);
   const ends=new Set(units.map(x=>x.e));ends.delete(w.length-1);
   let html="";
   units.forEach((x,ui)=>{html+=`<span class="useg ${ui%2?"alt":""}"><span class="usup">${ui+1}</span>`;
     for(let i=x.s;i<=x.e;i++){const t=w[i];html+=`<span class="w ${ends.has(i)?"end":""}" data-a="tog" data-i="${i}" ${fin?"":`role="button" tabindex="0" aria-label="Split after “${h(t)}”"`}>${h(t)}</span>${i<x.e?" ":""}`;}
     html+=`</span> `;});
   return`${head(r,`<div class="steps"><span class="${fin?"done":"on"}">${fin?"Unitizing complete":"Unitizing"}</span></div>`)}
-  <p class="hint">${fin?"These units are locked and visible to the coders. Reopen only if no one has started coding, since changed units lose their codes.":"Click a word to end a unit after it; click it again to remove the split. Split at the clause level, following the unitizing guide on the right."}</p>
+  <p class="hint">${resolved?"This response has gone to the coders. Your version is kept for the reliability check.":fin&&dbl?"Marked complete. Once the other unitizer finishes too, Unitizer 1's version goes to the coders automatically.":fin?"These units are locked and visible to the coders. Reopen only if no one has started coding, since changed units lose their codes.":"Click a word to end a unit after it; click it again to remove the split. Split at the clause level, following the unitizing guide on the right."+(dbl?" This response is double-unitized: the other unitizer splits it separately, and neither of you sees the other's version.":"")}</p>
   ${fin?"":`<div class="bar"><button class="btn ghost" data-a="clear">Remove all splits</button></div>`}
   <div class="resp ${fin?"locked":""}">${html}</div>
   <h3>${units.length} unit${units.length===1?"":"s"}</h3>
   <ol class="ulist">${units.map((x,i)=>`<li><span class="num">${i+1}</span><span>${h(x.text)}</span></li>`).join("")}</ol>
   <div class="foot">${u?`<span class="meta">Last saved by ${h(u.initials||"—")}</span>`:""}<span class="grow"></span>
-  ${fin?`<button class="btn" data-a="reopen">Reopen for editing</button>`:`<button class="btn primary" data-a="final" ${units.length?"":"disabled"}>Mark unitizing complete</button>`}</div>`;
+  ${resolved?`<span class="chip ok">Sent to coders</span>`:fin?`<button class="btn" data-a="reopen">Reopen for editing</button>`:`<button class="btn primary" data-a="final" ${units.length?"":"disabled"}>Mark unitizing complete</button>`}</div>`;
 }
 
 function renderCoder(id){
@@ -534,8 +552,8 @@ function renderUnitPass(id,units,d){
 function latestCodes(){const m={};for(const uid in S.allCodes)for(const d of Object.values(S.allCodes[uid])){if(!d||!d.respId)continue;(m[d.respId]=m[d.respId]||{});const c=m[d.respId][d.role];if(!c||(d.updatedAt||0)>(c.updatedAt||0))m[d.respId][d.role]=d;}return m;}
 function renderLead(){
   if(S.mode==="live"&&!S.canLead)return`<div class="panel empty"><strong>Lead tools need the lead passcode</strong>Pick your coding role above, or sign out and sign in with the lead passcode.</div>`;
-  const tabs=[["responses","Responses"],["reliability","Reliability"],["export","Export"]];
-  let body=S.leadTab==="reliability"?renderRel():S.leadTab==="export"?renderExport():renderResponses();
+  const tabs=[["responses","Responses"],["unitizing","Unitizing reliability"],["reliability","Coding reliability"],["export","Export"]];
+  let body=S.leadTab==="unitizing"?renderUnitRel():S.leadTab==="reliability"?renderRel():S.leadTab==="export"?renderExport():renderResponses();
   return`<section class="panel"><div class="tabs" role="tablist">${tabs.map(([k,v])=>`<button role="tab" data-a="ltab" data-t="${k}" aria-selected="${S.leadTab===k}">${v}</button>`).join("")}</div>${body}</section>`;
 }
 function renderResponses(){
@@ -545,17 +563,20 @@ function renderResponses(){
     const del=S.confirmDel===r.id?`<span class="confirm">Delete? <button class="btn danger" data-a="delYes" data-id="${h(r.id)}">Delete</button><button class="btn ghost" data-a="delNo">Keep</button></span>`:`<button class="btn ghost" data-a="del" data-id="${h(r.id)}">Delete</button>`;
     return`<tr><td class="mono">${h(r.pid)}</td><td class="mono">${h(r.session||"")}</td><td>${h(r.condition||"")}</td><td class="mono">${words(r.text).length}</td>
     <td>${u?.status==="final"?`<span class="chip ok">${unitsOf(r.id).length} units</span>`:u?`<span class="chip mid">Draft</span>`:`<span class="chip">—</span>`}</td>
+    <td><select id="ua_${h(r.id)}" data-a="uassign" data-id="${h(r.id)}" aria-label="Unitizing for ${h(r.pid)}">${[["U1","Unitizer 1"],["U2","Unitizer 2"],["both","Both unitizers"]].map(([v,t])=>`<option value="${v}" ${uAssign(r)===v?"selected":""}>${t}</option>`).join("")}</select>${uAssign(r)==="both"?`<br>${uChip(c.U1,"U1")} ${uChip(c.U2,"U2")}`:""}</td>
     <td><select id="as_${h(r.id)}" data-a="assign" data-id="${h(r.id)}" aria-label="Assignment for ${h(r.pid)}">${[["both","Both coders"],["C1","Coder 1 only"],["C2","Coder 2 only"]].map(([v,t])=>`<option value="${v}" ${(r.assign||"both")===v?"selected":""}>${t}</option>`).join("")}</select></td>
     <td>${st("C1")}</td><td>${st("C2")}</td><td>${del}</td></tr>`;}).join("");
-  const nb=list.filter(r=>(r.assign||"both")==="both").length;
+  const nb=list.filter(r=>(r.assign||"both")==="both").length;const nu=list.filter(r=>uAssign(r)==="both").length;
   return`<div class="grid2"><div><h3>Add one response</h3><form id="addOne"><div class="fgrid">
     <label class="field" for="f_pid">Participant ID<input id="f_pid" required></label><label class="field" for="f_ses">Session<select id="f_ses"><option value="1">1 · immediate</option><option value="2">2 · delayed</option></select></label><label class="field" for="f_con">Condition (optional)<input id="f_con"></label></div>
     <label class="field" for="f_txt">Recall text<textarea id="f_txt" required rows="4"></textarea></label><div class="foot" style="border:0;padding-top:4px;margin-top:6px"><button class="btn primary" type="submit">Add response</button></div></form></div>
     <div><h3>Paste many</h3><p class="hint">Paste rows from a spreadsheet (tab-separated) or CSV with a header row containing <code>pid</code>, <code>session</code>, <code>condition</code> (optional) and <code>text</code>.</p>
     <label class="field" for="f_bulk">Rows<textarea id="f_bulk" rows="5" placeholder="pid&#9;session&#9;text"></textarea></label><div class="foot" style="border:0;padding-top:4px;margin-top:6px"><button class="btn" data-a="bulk">Add rows</button><span class="meta">${h(S.bulkMsg)}</span></div></div></div>
-  <div class="bar"><h3 style="margin:0">${list.length} responses</h3><span class="meta">${nb} double-coded (${list.length?Math.round(100*nb/list.length):0}%)</span><span class="grow"></span><button class="btn" data-a="rel20">Double-code a random 20%, split the rest</button></div>
-  ${list.length?`<div class="tw"><table><thead><tr><th>PID</th><th>Session</th><th>Condition</th><th>Words</th><th>Units</th><th>Assigned to</th><th>Coder 1</th><th>Coder 2</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="empty"><strong>No responses yet</strong>Add one above or paste a batch.</div>`}`;
+  <div class="bar"><h3 style="margin:0">${list.length} responses</h3><span class="grow"></span><button class="btn" data-a="urel20">Double-unitize a random 20%, split the rest</button><button class="btn" data-a="rel20">Double-code a random 20%, split the rest</button></div>
+  <p class="meta" style="margin:-6px 0 12px">${nu} double-unitized (${list.length?Math.round(100*nu/list.length):0}%) · ${nb} double-coded (${list.length?Math.round(100*nb/list.length):0}%)</p>
+  ${list.length?`<div class="tw"><table><thead><tr><th>PID</th><th>Session</th><th>Condition</th><th>Words</th><th>Units</th><th>Unitizing</th><th>Coding</th><th>Coder 1</th><th>Coder 2</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:`<div class="empty"><strong>No responses yet</strong>Add one above or paste a batch.</div>`}`;
 }
+function uChip(d,role){return d?`<span class="chip ${d.status==="final"?"ok":"mid"}">${role}: ${d.status==="final"?"done":"draft"}</span>`:`<span class="chip">${role}: —</span>`;}
 function codeLabel(it){if(!it||!it.act)return"(blank)";if(!isAct(it.act))return ACT_NAME(it.act);if(it.none)return"A"+it.act+": no match";return(it.ius||[]).slice().sort((a,b)=>a-b).map(n=>"#"+n).join(" + ")||"(blank)";}
 function kappa(pairs){const n=pairs.length;if(!n)return{po:null,k:null,n:0};const ca={},cb={},cats=new Set();let po=0;
   pairs.forEach(([a,b])=>{if(a===b)po++;ca[a]=(ca[a]||0)+1;cb[b]=(cb[b]||0)+1;cats.add(a);cats.add(b);});po/=n;let pe=0;cats.forEach(c=>pe+=((ca[c]||0)/n)*((cb[c]||0)/n));
@@ -577,11 +598,43 @@ function renderRel(){const R=relData();
   <div class="stats">${tile("Act agreement",R.act)}${tile("Idea-unit agreement",R.idea)}<div class="stat"><div class="k">Responses compared</div><div class="v">${R.per.length}</div><div class="s">${R.pending} still in progress</div></div></div>
   ${det||`<div class="empty"><strong>Nothing to compare yet</strong>Agreement appears once both coders submit the same response.</div>`}`;
 }
+function uCompare(id){const L=latestCodes()[id]||{};const A=L.U1,B=L.U2;const n=words(S.responses[id]?.text).length;
+  const inr=b=>new Set((b||[]).filter(i=>i>=0&&i<n-1));return{A,B,a:inr(A?.bounds),b:inr(B?.bounds),n};}
+const gapPairs=c=>[...Array(Math.max(0,c.n-1)).keys()].map(i=>[c.a.has(i)?"s":"-",c.b.has(i)?"s":"-"]);
+function unitRelData(){const per=[],waiting=[];
+  respList().filter(r=>uAssign(r)==="both").forEach(r=>{const c=uCompare(r.id);if(!(c.A?.status==="final"&&c.B?.status==="final")){waiting.push({r,c});return;}
+    const both=[...c.a].filter(i=>c.b.has(i)).length,oa=c.a.size-both,ob=c.b.size-both;
+    per.push({r,c,both,oa,ob,ag:(both+oa+ob)?both/(both+oa+ob):1,ua:c.a.size+1,ub:c.b.size+1});});
+  const sum=f=>per.reduce((t,p)=>t+f(p),0);const B=sum(p=>p.both),OA=sum(p=>p.oa),OB=sum(p=>p.ob),NA=sum(p=>p.ua),NB=sum(p=>p.ub);
+  const pairs=per.flatMap(p=>gapPairs(p.c));
+  return{per,waiting,B,OA,OB,ag:(B+OA+OB)?B/(B+OA+OB):null,kap:pairs.length?kappa(pairs).k:null,gU:(NA+NB)?Math.abs(NA-NB)/(NA+NB):null};}
+function resolveSet(id,c){if(!S.resolve[id]){const f=S.units[id];S.resolve[id]=new Set(f?.status==="final"?f.bounds:[...c.a].filter(i=>c.b.has(i)));}return S.resolve[id];}
+function renderUnitRel(){const R=unitRelData();
+  const det=R.per.map(p=>{const id=p.r.id,c=p.c,w=words(p.r.text),F=resolveSet(id,c),sent=S.units[id]?.status==="final";
+    let t="";w.forEach((x,i)=>{t+=`<span class="rz ${F.has(i)?"end":""}" data-a="rtog" data-id="${h(id)}" data-i="${i}" role="button" tabindex="0">${h(x)}</span>`;
+      if(c.a.has(i)&&!c.b.has(i))t+=`<span class="dg dg1">1</span>`;else if(c.b.has(i)&&!c.a.has(i))t+=`<span class="dg dg2">2</span>`;t+=" ";});
+    return`<details data-uid="${h(id)}" ${S.openU.has(id)?"open":""}><summary><span style="font-family:var(--f-mono)">${h(p.r.pid)} · S${h(p.r.session||"?")}</span><span class="chip">Agreement ${pct(p.ag)}</span><span class="meta">${p.oa+p.ob} disagreement${p.oa+p.ob===1?"":"s"} · ${h(c.A.initials||"U1")} ${p.ua} units, ${h(c.B.initials||"U2")} ${p.ub} units</span>${sent?`<span class="chip ok">Sent to coders</span>`:""}</summary>
+    <div style="padding:0 12px 12px"><p class="hint">‖ marks a split in the version you'll send to coders. A small <span class="dg dg1">1</span> or <span class="dg dg2">2</span> marks a split only Unitizer 1 or only Unitizer 2 made. Click a word to add or remove a split after it.</p>
+    <div class="resp">${t}</div><div class="bar"><button class="btn" data-a="rset" data-id="${h(id)}" data-v="agree">Start from agreed splits</button><button class="btn" data-a="rset" data-id="${h(id)}" data-v="U1">Use Unitizer 1's</button><button class="btn" data-a="rset" data-id="${h(id)}" data-v="U2">Use Unitizer 2's</button><span class="grow"></span><span class="meta">${F.size+1} units</span><button class="btn primary" data-a="rsend" data-id="${h(id)}">${sent?"Resend to coders":"Send to coders"}</button></div>
+    ${sent?`<p class="meta">Coders may already have started on the version you sent. Units you change lose their codes.</p>`:""}</div></details>`;}).join("");
+  const wait=R.waiting.map(({r,c})=>`<tr><td class="mono">${h(r.pid)}</td><td class="mono">${h(r.session||"")}</td><td>${uChip(c.A,"U1")}</td><td>${uChip(c.B,"U2")}</td></tr>`).join("");
+  return`<p class="hint">Agreement between Unitizer 1 and Unitizer 2 on double-unitized responses both have marked complete. Split-point agreement = splits both made ÷ (splits both made + splits only one made). κ compares every gap between words (split or not). Guetzkow's U compares how many units each made (0 = the same number). When both unitizers mark a response complete, Unitizer 1's version goes to the coders automatically. You can still open a response here, adjust its splits and resend it, but you don't need to.</p>
+  <div class="stats"><div class="stat"><div class="k">Split-point agreement</div><div class="v">${pct(R.ag)}</div><div class="s">${R.B} shared · ${R.OA} only U1 · ${R.OB} only U2 ${R.ag!=null?`<span class="chip ${R.ag>=.8?"ok":"mid"}">${R.ag>=.8?"Meets 80%":"Below 80%"}</span>`:""}</div></div>
+  <div class="stat"><div class="k">κ, all word gaps</div><div class="v">${k2(R.kap)}</div><div class="s">split vs no split at each gap</div></div>
+  <div class="stat"><div class="k">Guetzkow's U</div><div class="v">${R.gU==null?"—":R.gU.toFixed(3)}</div><div class="s">difference in number of units</div></div>
+  <div class="stat"><div class="k">Responses compared</div><div class="v">${R.per.length}</div><div class="s">${R.waiting.length} still in progress</div></div></div>
+  ${det||`<div class="empty"><strong>Nothing to compare yet</strong>Agreement appears once both unitizers mark the same double-unitized response complete. Use "Double-unitize a random 20%" under Responses to assign them.</div>`}
+  ${wait?`<h3 style="margin-top:16px">Waiting for one or both unitizers</h3><div class="tw"><table><thead><tr><th>PID</th><th>Session</th><th>Unitizer 1</th><th>Unitizer 2</th></tr></thead><tbody>${wait}</tbody></table></div>`:""}`;
+}
 function renderExport(){return`<p class="hint">Download coded data as CSV (opens in Excel, R or SPSS). Unit-level has one row per unit per coder; participant-level counts distinct idea units recalled, split by the draft gist/detail key and by Act. When a response was coded twice, both coders appear.</p>
-  <div class="bar"><button class="btn primary" data-a="exp" data-t="units">Unit-level CSV</button><button class="btn" data-a="exp" data-t="scores">Participant-level CSV</button></div>
+  <div class="bar"><button class="btn primary" data-a="exp" data-t="units">Unit-level CSV</button><button class="btn" data-a="exp" data-t="scores">Participant-level CSV</button><button class="btn" data-a="exp" data-t="unitrel">Unitizing agreement CSV</button></div>
   ${S.exportCsv?`<label class="field" for="exptxt">Downloads aren't available in this view. Copy the CSV instead:<textarea id="exptxt" rows="10" readonly>${h(S.exportCsv)}</textarea></label><div class="bar"><button class="btn" data-a="copy">Copy CSV</button></div>`:""}`;}
 const csvq=v=>{const s=String(v??"");return/[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
 function buildCsv(t){const L=latestCodes();const out=[];
+  if(t==="unitrel"){const R=unitRelData();out.push(["response_id","participant_id","session","condition","u1_initials","u2_initials","u1_units","u2_units","splits_both","splits_u1_only","splits_u2_only","split_agreement","sent_to_coders"]);
+    R.per.forEach(p=>out.push([p.r.id,p.r.pid,p.r.session,p.r.condition,p.c.A.initials,p.c.B.initials,p.ua,p.ub,p.both,p.oa,p.ob,p.ag.toFixed(3),S.units[p.r.id]?.status==="final"?1:0]));
+    out.push([]);out.push(["pooled","","","","","","","",R.B,R.OA,R.OB,R.ag==null?"":R.ag.toFixed(3),""]);out.push(["kappa_all_gaps",R.kap==null?"":R.kap.toFixed(3)]);out.push(["guetzkow_u",R.gU==null?"":R.gU.toFixed(3)]);
+    return out.map(r=>r.map(csvq).join(",")).join("\r\n");}
   if(t==="units"){out.push(["response_id","participant_id","session","condition","unit_no","unit_text","coder_role","coder_initials","act_pass1","act_final","idea_units","idea_unit_labels","gist_detail","no_match","flagged","note"]);
     respList().forEach(r=>{const units=unitsOf(r.id);["C1","C2"].forEach(role=>{const d=L[r.id]?.[role];if(!d)return;units.forEach((u,i)=>{const it=d.items[u.key]||{};const ius=(it.ius||[]).slice().sort((a,b)=>a-b);
       out.push([r.id,r.pid,r.session,r.condition,i+1,u.text,ROLES[role],d.initials,it.act1||"",it.act||"",ius.join(";"),ius.map(n=>KEY[n].label).join(";"),ius.map(n=>KEY[n].gd==="G"?"Gist":"Detail").join(";"),it.none?1:0,it.flag?1:0,it.note||""]);});});});}
@@ -597,7 +650,7 @@ document.documentElement.style.setProperty("--hh",(document.querySelector(".top"
 window.addEventListener("resize",()=>document.documentElement.style.setProperty("--hh",$(".top").offsetHeight+"px"));
 
 /* ---------- side story key ---------- */
-const sideKeyRole=()=>(S.role==="U"||S.role==="C1"||S.role==="C2")&&(S.mode==="live"||S.mode==="demo")&&S.view==="work";
+const sideKeyRole=()=>(isUnit(S.role)||S.role==="C1"||S.role==="C2")&&(S.mode==="live"||S.mode==="demo")&&S.view==="work";
 function keyCtx(){const none={act:null,sel:[]};if(!(S.role==="C1"||S.role==="C2")||!S.sel||S.units[S.sel]?.status!=="final")return none;
   const units=unitsOf(S.sel);const d=myDoc(S.sel);if(!units.length)return none;
   if(!d||d.phase==="act"){const u=units[Math.min(S.curRow,units.length-1)];return{act:d?.items[u.key]?.act||null,sel:[]};}
@@ -620,6 +673,7 @@ const GUIDE=`<div class="guide">
 <ul>
 <li><b>Names stay with their verb.</b> <i>amelia went back to school</i> is one unit, never <i>amelia ‖ went back to school</i>. Coders can still tick #3 for the name.</li>
 <li><b>Descriptions with names are the same unit.</b> <i>she talked to chrissy, her friend</i> and <i>a girl named Amelia</i> stay together.</li>
+<li><b>"-ing" phrases stay with their clause.</b> <i>she found the test sitting on the floor</i>, <i>she waited for a decision, feeling good</i> and <i>she got in by taking a test</i> are one unit each. Split only when "and" starts a new action: <i>she stole the test ‖ and cheated her way in</i>.</li>
 <li><b>"And" with no new verb.</b> <i>she knew it would be cheating and unfair to other students</i> is one unit.</li>
 <li><b>Speech and letters.</b> Keep one line of speech, quoted or paraphrased, together, and keep a letter's words with it.<div class="gex">she got a letter from NMSU saying she was accepted</div></li>
 <li><b>A verb and what completes it.</b> <i>decided to leave it</i>, <i>wanted to study computer science</i> and <i>knew that it was wrong</i> are one unit each ("in order to" doesn't fit).</li>
@@ -633,7 +687,7 @@ const GUIDE=`<div class="guide">
 function renderSideKey(){const sk=$("#sidekey"),shell=$("#shell");
   const show=S.popout||(S.keyOpen&&sideKeyRole());sk.hidden=!show;shell.classList.toggle("withkey",show&&!S.popout);
   if(!show)return;
-  const isU=S.role==="U"&&!S.popout;const tab=isU?S.skTab:"key";const kind=isU?"U":"C";
+  const isU=isUnit(S.role)&&!S.popout;const tab=isU?S.skTab:"key";const kind=isU?"U":"C";
   if(sk.dataset.built!==kind){sk.dataset.built=kind;sk.dataset.sig="";
     sk.innerHTML=`<div class="skhead"><div class="row">${isU?`<div class="tabs sktabs" role="tablist"><button role="tab" data-k="tab" data-v="guide">Unitizing guide</button><button role="tab" data-k="tab" data-v="key">Story key</button></div>`:`<h2>Story key</h2>`}<span>${S.popout?"":`<button class="btn ghost" data-k="pop" title="Open the story key in its own window">Pop out</button> <button class="btn ghost" data-k="close" aria-label="Hide side panel">Hide</button>`}</span></div>
       <div class="skkeyhead"><input id="keyq" type="search" placeholder="Search words, e.g. custodian, letter, #62" aria-label="Search the story key"><div class="skchips"></div><div class="sknote"></div></div></div><div class="sklist"></div>`;}
@@ -705,10 +759,10 @@ document.addEventListener("click",async e=>{
   switch(a){
     case"demo":startDemo();break;
     case"sel":S.sel=el.dataset.id;S.curRow=0;S.curUnit=0;render();window.scrollTo({top:0});break;
-    case"tog":{const u=S.units[id];if(u?.status==="final")return;const i=+el.dataset.i;const b=new Set(u?.bounds||[]);b.has(i)?b.delete(i):b.add(i);setUnits(id,[...b],"draft");break;}
-    case"clear":setUnits(id,[],"draft");break;
-    case"final":setUnits(id,S.units[id]?.bounds||[],"final");toast("Unitizing marked complete. Coders can start.");break;
-    case"reopen":setUnits(id,S.units[id]?.bounds||[],"draft");break;
+    case"tog":{const u=uWork(id);if(u?.status==="final"||(isDouble(id)&&S.units[id]?.status==="final"))return;const i=+el.dataset.i;const b=new Set(u?.bounds||[]);b.has(i)?b.delete(i):b.add(i);setMyUnits(id,[...b],"draft");break;}
+    case"clear":setMyUnits(id,[],"draft");break;
+    case"final":setMyUnits(id,uWork(id)?.bounds||[],"final");toast(isDouble(id)?"Marked complete.":"Unitizing marked complete. Coders can start.");break;
+    case"reopen":setMyUnits(id,uWork(id)?.bounds||[],"draft");break;
     case"row":S.curRow=+el.dataset.i;render();break;
     case"act":setAct(el.dataset.k,el.dataset.v,+el.dataset.i);break;
     case"toUnit":{const d=ensureDoc(id);unitsOf(id).forEach(u=>{const it=item(d,u.key);it.act1=it.act;});d.phase="unit";S.curUnit=Math.max(0,unitsOf(id).findIndex(u=>!unitDone(d.items[u.key])));saveDoc(id);render();break;}
@@ -724,20 +778,29 @@ document.addEventListener("click",async e=>{
     case"bulk":{const rows=parseRows($("#f_bulk").value);const made=rows.map((r,i)=>makeResp(r.pid,r.session,r.condition,r.text,i)).filter(Boolean);
       try{await batched(made.map(m=>({op:"set",path:"responses/"+m.id,data:m.doc})));S.bulkMsg=rows.length?`Added ${made.length} of ${rows.length} rows.`:"No rows with text found.";if(made.length)$("#f_bulk").value="";}
       catch(err){made.forEach(m=>delete S.responses[m.id]);S.bulkMsg="Nothing was added: "+errMsg(err);}render();break;}
+    case"urel20":{const list=respList().filter(r=>S.units[r.id]?.status!=="final");if(!list.length){toast("Every response already has final units.");break;}
+      const sh=list.map(r=>r.id).sort(()=>Math.random()-.5);const nb=Math.max(1,Math.ceil(sh.length*.2));const ops=[];
+      sh.forEach((rid,i)=>{const as=i<nb?"both":(i%2?"U1":"U2");const r=S.responses[rid];if(uAssign(r)!==as||!r.uassign)ops.push({op:"set",path:"responses/"+rid,data:{...clone(r),uassign:as}});});
+      try{await batched(ops);toast(`${nb} double-unitized; the rest alternate between unitizers.`);}catch(err){toast(errMsg(err));}render();break;}
+    case"rtog":{const rid=el.dataset.id;const i=+el.dataset.i;const n=words(S.responses[rid].text).length;if(i>=n-1)break;const F=resolveSet(rid,uCompare(rid));F.has(i)?F.delete(i):F.add(i);render();break;}
+    case"rset":{const rid=el.dataset.id,c=uCompare(rid),v=el.dataset.v;S.resolve[rid]=new Set(v==="U1"?c.a:v==="U2"?c.b:[...c.a].filter(i=>c.b.has(i)));render();break;}
+    case"rsend":{const rid=el.dataset.id;const F=resolveSet(rid,uCompare(rid));setUnits(rid,[...F],"final");toast("Agreed units sent to the coders.");break;}
     case"rel20":{const list=respList();const sh=list.map(r=>r.id).sort(()=>Math.random()-.5);const nb=Math.max(1,Math.ceil(list.length*.2));const ops=[];
       sh.forEach((rid,i)=>{const as=i<nb?"both":(i%2?"C1":"C2");const r=S.responses[rid];if(r.assign!==as)ops.push({op:"set",path:"responses/"+rid,data:{...clone(r),assign:as}});});
       try{await batched(ops);toast(`${nb} double-coded; the rest alternate between coders.`);}catch(err){toast(errMsg(err));}render();break;}
-    case"exp":{const csv=buildCsv(el.dataset.t);const fn=(el.dataset.t==="units"?"amelia_recall_units":"amelia_recall_scores")+".csv";
+    case"exp":{const csv=buildCsv(el.dataset.t);const fn=({units:"amelia_recall_units",scores:"amelia_recall_scores",unitrel:"amelia_unitizing_agreement"})[el.dataset.t]+".csv";
       const link=document.createElement("a");link.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv"}));link.download=fn;document.body.appendChild(link);link.click();
       setTimeout(()=>{URL.revokeObjectURL(link.href);link.remove();},1500);break;}
     case"copy":{const t=$("#exptxt");try{await navigator.clipboard.writeText(t.value);toast("Copied.");}catch(err){t.select();toast("Selected. Press Ctrl/Cmd+C to copy.");}break;}
   }
 });
+document.addEventListener("toggle",e=>{const d=e.target;if(d&&d.dataset&&d.dataset.uid){if(d.open)S.openU.add(d.dataset.uid);else S.openU.delete(d.dataset.uid);}},true);
 document.addEventListener("change",e=>{const el=e.target;const a=el.dataset&&el.dataset.a;if(!a)return;const id=S.sel;
   if(a==="iu"){const d=ensureDoc(id);const it=item(d,el.dataset.k);const n=+el.dataset.n;it.ius=(it.ius||[]).filter(x=>x!==n);if(el.checked)it.ius.push(n);saveDoc(id);render();}
   else if(a==="none"){const d=ensureDoc(id);const it=item(d,el.dataset.k);it.none=el.checked;if(el.checked)it.ius=[];saveDoc(id);render();}
   else if(a==="flag"){const d=ensureDoc(id);item(d,el.dataset.k).flag=el.checked;saveDoc(id);}
   else if(a==="chAct"){const d=ensureDoc(id);const it=item(d,el.dataset.k);if(it.act!==el.value){it.act=el.value;it.ius=[];it.none=false;saveDoc(id);render();}}
+  else if(a==="uassign"){const rid=el.dataset.id;const r=S.responses[rid];r.uassign=el.value;DB.doc("responses/"+rid).set(clone(r)).catch(err=>toast(errMsg(err)));render();}
   else if(a==="assign"){const rid=el.dataset.id;const r=S.responses[rid];r.assign=el.value;DB.doc("responses/"+rid).set(clone(r)).catch(err=>toast(errMsg(err)));}
 });
 document.addEventListener("input",e=>{const el=e.target;
@@ -749,7 +812,7 @@ document.addEventListener("submit",async e=>{if(e.target.id==="loginForm"){e.pre
   const ok=await addResponse($("#f_pid").value,$("#f_ses").value,$("#f_con").value,$("#f_txt").value);if(ok){$("#f_pid").value="";$("#f_txt").value="";$("#f_con").value="";toast("Response added.");render();}});
 document.addEventListener("keydown",e=>{
   const t=e.target;if(t&&(t.tagName==="INPUT"||t.tagName==="TEXTAREA"||t.tagName==="SELECT")||e.metaKey||e.ctrlKey||e.altKey)return;
-  if(t&&t.classList&&t.classList.contains("w")&&(e.key==="Enter"||e.key===" ")){e.preventDefault();t.click();return;}
+  if(t&&t.classList&&(t.classList.contains("w")||t.classList.contains("rz"))&&(e.key==="Enter"||e.key===" ")){e.preventDefault();t.click();return;}
   if(S.view!=="work"||!(S.role==="C1"||S.role==="C2")||!S.sel)return;
   const d=myDoc(S.sel);if(S.units[S.sel]?.status!=="final")return;const units=unitsOf(S.sel);
   if(!d||d.phase==="act"){const k=e.key.toUpperCase();
